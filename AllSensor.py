@@ -15,10 +15,7 @@ ir_sensor = DigitalInputDevice(5)
 # Ultrasonic Sensor
 # TRIG -> GPIO23
 # ECHO -> GPIO24
-ultrasonic = DistanceSensor(
-    echo=24,
-    trigger=23
-)
+ultrasonic = DistanceSensor(echo=24, trigger=23)
 
 # =========================
 # YOLO MODEL
@@ -44,10 +41,9 @@ picam2.configure(
 )
 
 picam2.start()
-
 time.sleep(2)
 
-print("Autonomous Navigation Started")
+print("Autonomous Navigation Test Started")
 print("Press q to quit")
 
 # =========================
@@ -55,54 +51,28 @@ print("Press q to quit")
 # =========================
 
 try:
-
     while True:
-
-        # -------------------------
-        # Capture camera frame
-        # -------------------------
-
         frame = picam2.capture_array()
-
-        # -------------------------
-        # Read sensors
-        # -------------------------
 
         distance = ultrasonic.distance * 100
         ir_value = ir_sensor.value
 
-        # -------------------------
-        # YOLO Detection
-        # -------------------------
-
-        results = model(frame, verbose=False)
-
         detected_person = False
         detected_stop_sign = False
 
+        results = model(frame, verbose=False)
+
         for result in results:
-
             for box in result.boxes:
-
                 class_id = int(box.cls[0])
                 confidence = float(box.conf[0])
 
                 if class_id in TRAFFIC_CLASSES and confidence > 0.45:
-
                     label = TRAFFIC_CLASSES[class_id]
-
                     x1, y1, x2, y2 = map(int, box.xyxy[0])
 
-                    # Draw rectangle
-                    cv2.rectangle(
-                        frame,
-                        (x1, y1),
-                        (x2, y2),
-                        (0, 255, 0),
-                        2
-                    )
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
 
-                    # Draw label
                     cv2.putText(
                         frame,
                         f"{label} {confidence:.2f}",
@@ -119,114 +89,44 @@ try:
                     if label == "stop sign":
                         detected_stop_sign = True
 
-        # -------------------------
-        # PATH DETECTION
-        # -------------------------
-
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-        blur = cv2.GaussianBlur(gray, (5, 5), 0)
-
-        _, thresh = cv2.threshold(
-            blur,
-            60,
-            255,
-            cv2.THRESH_BINARY_INV
-        )
-
-        height, width = thresh.shape
-
-        mask = thresh[int(height * 0.7):height, 0:width]
-
-        M = cv2.moments(mask)
-
-        path_position = "NONE"
-
-        if M['m00'] > 0:
-
-            cx = int(M['m10'] / M['m00'])
-
-            if cx < (width // 2) - 40:
-                path_position = "LEFT"
-
-            elif cx > (width // 2) + 40:
-                path_position = "RIGHT"
-
-            else:
-                path_position = "CENTER"
-
-        # -------------------------
-        # AUTONOMOUS LOGIC
-        # -------------------------
-
         print(f"\nDistance: {distance:.2f} cm")
         print(f"IR Sensor: {ir_value}")
-        print(f"Path Position: {path_position}")
 
-        # IR emergency obstacle
+        # =========================
+        # DECISION LOGIC
+        # =========================
+
         if ir_value == 0:
-
             print("ACTION: STOP")
             print("ACTION: REVERSE A LITTLE")
             print("ACTION: TURN RIGHT")
 
-        # Ultrasonic obstacle
         elif distance < 10:
-
             print("ACTION: STOP")
             print("ACTION: REVERSE A LITTLE")
             print("ACTION: TURN LEFT")
 
-        # Slow down zone
         elif distance < 25:
-
             print("ACTION: SLOW DOWN")
             print("ACTION: PREPARE TO TURN")
 
-        # Person detected
         elif detected_person:
-
             print("ACTION: STOP FOR PERSON")
 
-        # Stop sign detected
         elif detected_stop_sign:
-
             print("ACTION: STOP FOR STOP SIGN")
 
-        # Camera path navigation
-        elif path_position == "LEFT":
-
-            print("ACTION: TURN LEFT SLIGHTLY")
-
-        elif path_position == "RIGHT":
-
-            print("ACTION: TURN RIGHT SLIGHTLY")
-
-        elif path_position == "CENTER":
-
+        else:
             print("ACTION: MOVE FORWARD")
 
-        else:
+        cv2.imshow("Autonomous Navigation Test", frame)
 
-            print("ACTION: STOP")
-            print("ACTION: SEARCH FOR PATH")
-
-        # -------------------------
-        # Show camera window
-        # -------------------------
-
-        cv2.imshow("Autonomous Navigation", frame)
-
-        # Quit
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
 
 except KeyboardInterrupt:
-
     print("Program stopped")
 
 finally:
-
     picam2.stop()
-
     cv2.destroyAllWindows()
