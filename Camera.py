@@ -1,6 +1,6 @@
 import cv2
 
-# Open camera
+# Open Raspberry Pi camera
 camera = cv2.VideoCapture(0)
 
 # Check if camera opened
@@ -8,13 +8,14 @@ if not camera.isOpened():
     print("Cannot open camera")
     exit()
 
-print("Camera started")
+print("Camera started!")
 
 while True:
 
-    # Read frame
+    # Read frame from camera
     ret, frame = camera.read()
 
+    # If frame not captured
     if not ret:
         print("Failed to grab frame")
         break
@@ -26,6 +27,8 @@ while True:
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
-# Cleanup
+# Release camera
 camera.release()
+
+# Close all windows
 cv2.destroyAllWindows()
