@@ -1,34 +1,23 @@
+from picamera2 import Picamera2
 import cv2
+import time
 
-# Open Raspberry Pi camera
-camera = cv2.VideoCapture(0)
+picam2 = Picamera2()
+picam2.configure(
+    picam2.create_preview_configuration(
+        main={"format": "RGB888", "size": (640, 480)}
+    )
+)
 
-# Check if camera opened
-if not camera.isOpened():
-    print("Cannot open camera")
-    exit()
-
-print("Camera started!")
+picam2.start()
+time.sleep(1)
 
 while True:
+    frame = picam2.capture_array()
+    cv2.imshow("Camera Test", frame)
 
-    # Read frame from camera
-    ret, frame = camera.read()
-
-    # If frame not captured
-    if not ret:
-        print("Failed to grab frame")
+    if cv2.waitKey(1) & 0xFF == ord("q"):
         break
 
-    # Show camera window
-    cv2.imshow("Raspberry Pi Camera", frame)
-
-    # Press q to quit
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
-
-# Release camera
-camera.release()
-
-# Close all windows
+picam2.stop()
 cv2.destroyAllWindows()
