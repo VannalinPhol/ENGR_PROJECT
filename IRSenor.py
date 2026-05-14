@@ -1,16 +1,24 @@
 from gpiozero import DigitalInputDevice
 from time import sleep
 
-# GPIO17
 sensor = DigitalInputDevice(17)
 
-print("IR Sensor Test Started")
+last_value = None
+
+print("Calibrating IR sensor...")
+print("Turn the blue knob slowly until it changes when object is near.")
 
 while True:
+    value = sensor.value
 
-    if sensor.value == 0:
-        print("Object detected!")
-    else:
-        print("No object detected")
+    if value != last_value:
+        print("Raw sensor value:", value)
 
-    sleep(0.5)
+        if value == 0:
+            print("Object detected")
+        else:
+            print("No object")
+
+        last_value = value
+
+    sleep(0.1)
