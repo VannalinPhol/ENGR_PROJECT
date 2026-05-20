@@ -1,45 +1,125 @@
-from gpiozero import Motor, PWMOutputDevice, DigitalOutputDevice
 from time import sleep
+import RPi.GPIO as GPIO
 
-# TB6612FNG pins using BCM GPIO numbers
-AIN1 = 16   # Physical pin 36
-AIN2 = 18   # Physical pin 12
-PWMA = 12   # Physical pin 32
-STBY = 25   # Physical pin 22
+# Use physical pin numbers
+GPIO.setmode(GPIO.BOARD)
+GPIO.setwarnings(False)
 
-# Turn on motor driver
-standby = DigitalOutputDevice(STBY)
-standby.on()
+# Motor A pins
+PWMA = 12
+AIN1 = 16
+AIN2 = 18
 
-# Direction pins
-motor = Motor(forward=AIN1, backward=AIN2)
+# Motor B pins
+PWMB = 11
+BIN1 = 15
+BIN2 = 13
 
-# Speed pin
-pwm = PWMOutputDevice(PWMA)
+# Standby pin
+STBY = 22
+
+# PWM frequency
+PWM_FREQ = 100
+
+# Setup pins
+motor_pins = [PWMA, AIN1, AIN2, PWMB, BIN1, BIN2, STBY]
+
+for pin in motor_pins:
+    GPIO.setup(pin, GPIO.OUT)
+
+# Setup PWM
+pwma = GPIO.PWM(PWMA, PWM_FREQ)
+pwmb = GPIO.PWM(PWMB, PWM_FREQ)
+
+pwma.start(0)
+pwmb.start(0)
+
+def runMotor(motor, speed, direction):
+    GPIO.output(STBY, GPIO.HIGH)
+
+    if direction == 0:
+        in1 = GPIO.HIGH
+        in2 = GPIO.LOW
+    else:
+        in1 = GPIO.LOW
+        in2 = GPIO.HIGH
+
+    if motor == 0:
+        GPIO.output(AIN1, in1)
+        GPIO.output(AIN2, in2)
+        pwma.ChangeDutyCycle(speed)
+
+    elif motor == 1:
+        GPIO.output(BIN1, in1)
+        GPIO.output(BIN2, in2)
+        pwmb.ChangeDutyCycle(speed)
+
+def forward(speed):
+    runMotor(0, speed, 0)
+    runMotor(1, speed, 0)
+
+def reverse(speed):
+    runMotor(0, speed, 1)
+    runMotor(1, speed, 1)
+
+def turnLeft(speed):
+    runMotor(0, speed, 1)
+    runMotor(1, speed, 0)
+
+def turnRight(speed):
+    runMotor(0, speed, 0)
+    runMotor(1, speed, 1)
+
+def motorStop():
+    pwma.ChangeDutyCycle(0)
+    pwmb.ChangeDutyCycle(0)
+
+    GPIO.output(AIN1, GPIO.LOW)
+    GPIO.output(AIN2, GPIO.LOW)
+    GPIO.output(BIN1, GPIO.LOW)
+    GPIO.output(BIN2, GPIO.LOW)
+
+    GPIO.output(STBY, GPIO.LOW)
 
 try:
-    print("Motor forward")
-    pwm.value = 0.6
-    motor.forward()
-    sleep(3)
+    while True:
+        print("Forward")
+        forward(60)
+        sleep(2)
 
-    print("Stop")
-    motor.stop()
-    sleep(1)
+        print("Stop")
+        motorStop()
+        sleep(1)
 
-    print("Motor backward")
-    pwm.value = 0.6
-    motor.backward()
-    sleep(3)
+        print("Reverse")
+        reverse(60)
+        sleep(2)
 
-    print("Stop")
-    motor.stop()
-    pwm.off()
+        print("Stop")
+        motorStop()
+        sleep(1)
+
+        print("Turn Left")
+        turnLeft(60)
+        sleep(2)
+
+        print("Stop")
+        motorStop()
+        sleep(1)
+
+        print("Turn Right")
+        turnRight(60)
+        sleep(2)
+
+        print("Stop")
+        motorStop()
+        sleep(1)
 
 except KeyboardInterrupt:
-    print("Stopped by user")
+    print("Program stopped by user")
 
 finally:
-    motor.stop()
-    pwm.off()
-    standby.off()
+    motorStop()
+    pwma.stop()
+    pwmb.stop()
+    GPIO.cleanup()
