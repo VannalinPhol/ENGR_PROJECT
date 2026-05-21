@@ -1,3 +1,12 @@
+#for ultrasonic sensor
+
+
+#VCC  → Pi Pin 2
+#GND  → Pi Pin 9
+#TRIG → Pi Pin 29
+#ECHO → Pi Pin 31
+
+
 from time import sleep, time
 import RPi.GPIO as GPIO
 
