@@ -1,6 +1,5 @@
-# Test two DC motors wired together on AO1/AO2
-# TB6612FNG + Raspberry Pi
-# Using physical pin numbers
+# TB6612FNG Motor Test
+# Raspberry Pi GPIO BOARD mode
 
 from time import sleep
 import RPi.GPIO as GPIO
@@ -8,55 +7,99 @@ import RPi.GPIO as GPIO
 GPIO.setmode(GPIO.BOARD)
 GPIO.setwarnings(False)
 
-# Motor A pins
-PWMA = 12   # PWMA
-AIN2 = 18   # AIN2
-AIN1 = 16   # AIN1
-STBY = 22   # STBY
+# PWM Frequency
+pwmFreq = 100
 
-# Setup
+# Motor controller pins
+PWMA = 12
+AIN2 = 18
+AIN1 = 16
+STBY = 22
+BIN1 = 15
+BIN2 = 13
+PWMB = 11
+
+# Setup pins
 GPIO.setup(PWMA, GPIO.OUT)
-GPIO.setup(AIN1, GPIO.OUT)
 GPIO.setup(AIN2, GPIO.OUT)
+GPIO.setup(AIN1, GPIO.OUT)
 GPIO.setup(STBY, GPIO.OUT)
 
-# PWM speed control
-pwmA = GPIO.PWM(PWMA, 100)
-pwmA.start(0)
+GPIO.setup(BIN1, GPIO.OUT)
+GPIO.setup(BIN2, GPIO.OUT)
+GPIO.setup(PWMB, GPIO.OUT)
 
-try:
-    print("Driver ON")
+# Setup PWM
+pwma = GPIO.PWM(PWMA, pwmFreq)
+pwmb = GPIO.PWM(PWMB, pwmFreq)
+
+pwma.start(0)
+pwmb.start(0)
+
+# -----------------------------
+# Motor Functions
+# -----------------------------
+
+def motorA_forward(speed):
+    print("Motor A Forward")
+
     GPIO.output(STBY, GPIO.HIGH)
-    sleep(1)
 
-    print("Forward")
     GPIO.output(AIN1, GPIO.HIGH)
     GPIO.output(AIN2, GPIO.LOW)
-    pwmA.ChangeDutyCycle(100)
-    sleep(5)
 
-    print("Stop")
-    pwmA.ChangeDutyCycle(0)
-    GPIO.output(AIN1, GPIO.LOW)
-    GPIO.output(AIN2, GPIO.LOW)
-    sleep(2)
+    pwma.ChangeDutyCycle(speed)
 
-    print("Reverse")
+def motorA_reverse(speed):
+    print("Motor A Reverse")
+
+    GPIO.output(STBY, GPIO.HIGH)
+
     GPIO.output(AIN1, GPIO.LOW)
     GPIO.output(AIN2, GPIO.HIGH)
-    pwmA.ChangeDutyCycle(100)
-    sleep(5)
 
+    pwma.ChangeDutyCycle(speed)
+
+def stopMotor():
     print("Stop")
-    pwmA.ChangeDutyCycle(0)
+
+    pwma.ChangeDutyCycle(0)
+    pwmb.ChangeDutyCycle(0)
+
     GPIO.output(AIN1, GPIO.LOW)
     GPIO.output(AIN2, GPIO.LOW)
+
+    GPIO.output(BIN1, GPIO.LOW)
+    GPIO.output(BIN2, GPIO.LOW)
+
     GPIO.output(STBY, GPIO.LOW)
 
+# -----------------------------
+# Main Program
+# -----------------------------
+
+try:
+
+    # Forward
+    motorA_forward(100)
+    sleep(5)
+
+    stopMotor()
+    sleep(2)
+
+    # Reverse
+    motorA_reverse(100)
+    sleep(5)
+
+    stopMotor()
+
 except KeyboardInterrupt:
-    print("Stopped by user")
+    print("Program stopped")
 
 finally:
-    pwmA.ChangeDutyCycle(0)
-    pwmA.stop()
+    stopMotor()
+
+    pwma.stop()
+    pwmb.stop()
+
     GPIO.cleanup()
