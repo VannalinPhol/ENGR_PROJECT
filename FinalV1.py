@@ -6,8 +6,8 @@ from gpiozero import DistanceSensor
 from picamera2 import Picamera2
 from ultralytics import YOLO
 
-TRIGGER_PIN = 5
-ECHO_PIN = 6
+TRIGGER_PIN = 16
+ECHO_PIN = 18
 
 STOP_DISTANCE = 15
 SLOW_DISTANCE = 40
