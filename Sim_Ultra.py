@@ -7,8 +7,8 @@ from gpiozero import DistanceSensor
 # ULTRASONIC SENSOR SETUP
 # =========================
 
-TRIGGER_PIN = 23
-ECHO_PIN = 24
+TRIGGER_PIN = 5
+ECHO_PIN = 6
 
 MAX_RANGE_CM = 400
 SAMPLE_SIZE = 5
