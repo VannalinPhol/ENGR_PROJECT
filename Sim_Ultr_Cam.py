@@ -4,10 +4,9 @@ from gpiozero import DistanceSensor
 from picamera2 import Picamera2
 from ultralytics import YOLO
 import cv2
-from PIL import Image, ImageTk
 
 # =========================
-# ULTRASONIC SETUP
+# ULTRASONIC SENSOR
 # =========================
 
 TRIGGER_PIN = 5
@@ -36,10 +35,34 @@ def get_distance():
 
 
 # =========================
-# CAMERA + YOLO SETUP
+# CAMERA + YOLO
 # =========================
 
 model = YOLO("yolov8n.pt")
+
+TRAFFIC_CLASSES = {
+    0: "person",
+    1: "bicycle",
+    2: "car",
+    3: "motorcycle",
+    5: "bus",
+    6: "train",
+    7: "truck",
+    9: "traffic light",
+    11: "stop sign",
+}
+
+COLORS = {
+    0: (0, 255, 0),
+    1: (255, 0, 0),
+    2: (0, 0, 255),
+    3: (255, 255, 0),
+    5: (255, 0, 255),
+    6: (0, 255, 255),
+    7: (128, 0, 255),
+    9: (255, 255, 255),
+    11: (0, 165, 255),
+}
 
 picam2 = Picamera2()
 picam2.configure(
@@ -52,7 +75,7 @@ time.sleep(2)
 
 
 # =========================
-# GUI SETUP
+# GUI
 # =========================
 
 WIDTH = 1400
@@ -68,16 +91,56 @@ canvas.pack()
 
 road_offset = 0
 side_offset = 0
-distance_history = []
-
-last_distance = 100
 stop_until = 0
-camera_image = None
+last_distance = 100
+last_detected_object = "None"
 
 
-# =========================
-# LOGIC
-# =========================
+def detect_objects():
+    global last_detected_object
+
+    frame = picam2.capture_array()
+    results = model(frame, verbose=False)
+
+    person_detected = False
+    detected_names = []
+
+    for result in results:
+        for box in result.boxes:
+            class_id = int(box.cls[0])
+            confidence = float(box.conf[0])
+
+            if class_id in TRAFFIC_CLASSES and confidence > 0.45:
+                x1, y1, x2, y2 = map(int, box.xyxy[0])
+                label = TRAFFIC_CLASSES[class_id]
+                color = COLORS[class_id]
+
+                detected_names.append(label)
+
+                if class_id == 0:
+                    person_detected = True
+
+                cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+                cv2.putText(
+                    frame,
+                    f"{label} {confidence:.2f}",
+                    (x1, y1 - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    color,
+                    2
+                )
+
+    if detected_names:
+        last_detected_object = ", ".join(set(detected_names))
+    else:
+        last_detected_object = "None"
+
+    cv2.imshow("Traffic Detection", frame)
+    cv2.waitKey(1)
+
+    return person_detected
+
 
 def get_status(distance, person_detected, forced_stop=False):
     if distance is None:
@@ -90,7 +153,10 @@ def get_status(distance, person_detected, forced_stop=False):
         return "#ff3b30", "STOP", "Person close", "0 km/h", "STOP"
 
     if person_detected and distance < SLOW_DISTANCE:
-        return "#ffd60a", "SLOW", "Person ahead", "25 km/h", "SLOW"
+        return "#ffd60a", "SLOW", "Person medium distance", "25 km/h", "SLOW"
+
+    if person_detected and distance >= SLOW_DISTANCE:
+        return "#30ff5a", "FAST", "Person far away", "60 km/h", "FAST"
 
     if distance < STOP_DISTANCE:
         return "#ff3b30", "STOP", "Object close", "0 km/h", "STOP"
@@ -98,50 +164,8 @@ def get_status(distance, person_detected, forced_stop=False):
     if distance < SLOW_DISTANCE:
         return "#ffd60a", "SLOW", "Object nearby", "25 km/h", "SLOW"
 
-    if person_detected:
-        return "#30ff5a", "FAST", "Person far", "60 km/h", "FAST"
-
     return "#30ff5a", "FAST", "Path clear", "60 km/h", "FAST"
 
-
-# =========================
-# CAMERA DETECTION
-# =========================
-
-def detect_person():
-    frame = picam2.capture_array()
-    results = model(frame, verbose=False)
-
-    person_detected = False
-
-    for result in results:
-        for box in result.boxes:
-            class_id = int(box.cls[0])
-            confidence = float(box.conf[0])
-
-            # YOLO class 0 = person
-            if class_id == 0 and confidence > 0.45:
-                person_detected = True
-
-                x1, y1, x2, y2 = map(int, box.xyxy[0])
-
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                cv2.putText(
-                    frame,
-                    f"person {confidence:.2f}",
-                    (x1, y1 - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.6,
-                    (0, 255, 0),
-                    2
-                )
-
-    return frame, person_detected
-
-
-# =========================
-# DRAWING FUNCTIONS
-# =========================
 
 def draw_panel(x1, y1, x2, y2, title):
     canvas.create_rectangle(x1, y1, x2, y2, fill="#071521", outline="#1e3a4f", width=2)
@@ -155,41 +179,12 @@ def draw_tree(x, y, scale):
     canvas.create_oval(x - 55 * scale, y - 55 * scale,
                        x + 55 * scale, y + 55 * scale,
                        fill="#14532d", outline="#22c55e")
-    canvas.create_oval(x - 40 * scale, y - 95 * scale,
-                       x + 40 * scale, y - 10 * scale,
-                       fill="#166534", outline="")
-
-
-def draw_light(x, y, scale):
-    h = 110 * scale
-    canvas.create_line(x, y, x, y - h, fill="#94a3b8", width=max(2, int(4 * scale)))
-    canvas.create_line(x, y - h, x + 45 * scale, y - h - 15 * scale,
-                       fill="#94a3b8", width=max(2, int(4 * scale)))
-    canvas.create_oval(x + 35 * scale, y - h - 25 * scale,
-                       x + 65 * scale, y - h + 5 * scale,
-                       fill="#fde68a", outline="")
-
-
-def draw_house(x, y, scale):
-    w = 90 * scale
-    h = 70 * scale
-
-    canvas.create_rectangle(x - w / 2, y - h, x + w / 2, y,
-                            fill="#475569", outline="#94a3b8")
-    canvas.create_polygon(x - w / 2 - 10 * scale, y - h,
-                          x, y - h - 45 * scale,
-                          x + w / 2 + 10 * scale, y - h,
-                          fill="#7f1d1d", outline="")
-    canvas.create_rectangle(x - 35 * scale, y - 55 * scale,
-                            x - 10 * scale, y - 35 * scale,
-                            fill="#fde68a", outline="")
 
 
 def draw_environment(moving, speed_level):
     global road_offset, side_offset
 
     canvas.create_rectangle(0, 0, WIDTH, HEIGHT, fill="#06111c", outline="")
-
     canvas.create_text(WIDTH // 2, 35, text="ULTRASONIC + CAMERA AUTONOMOUS CONTROL",
                        fill="white", font=("Arial", 22, "bold"))
 
@@ -222,12 +217,6 @@ def draw_environment(moving, speed_level):
 
         draw_tree(left_x, y, scale)
         draw_tree(right_x, y, scale)
-        draw_light(left_x + 80 * scale, y, scale)
-        draw_light(right_x - 80 * scale, y, scale)
-
-        if i % 3 == 0:
-            draw_house(left_x - 100 * scale, y + 30 * scale, scale)
-            draw_house(right_x + 100 * scale, y + 30 * scale, scale)
 
     if moving:
         if speed_level == "FAST":
@@ -238,16 +227,6 @@ def draw_environment(moving, speed_level):
             side_offset += 10
 
 
-def draw_sensor_zone(distance, color, status):
-    canvas.create_polygon(
-        620, 520, 780, 520, 740, 170, 660, 170,
-        fill=color, stipple="gray25", outline=color, width=2
-    )
-
-    canvas.create_text(700, 250, text=status + " ZONE",
-                       fill=color, font=("Arial", 20, "bold"))
-
-
 def draw_car():
     cx = 700
     cy = 600
@@ -255,15 +234,29 @@ def draw_car():
     canvas.create_oval(cx - 170, cy + 80, cx + 170, cy + 125,
                        fill="#020617", outline="")
 
-    canvas.create_polygon(cx - 145, cy + 55, cx - 125, cy - 25,
-                          cx - 70, cy - 95, cx + 70, cy - 95,
-                          cx + 125, cy - 25, cx + 145, cy + 55,
-                          cx + 105, cy + 95, cx - 105, cy + 95,
-                          fill="#cbd5e1", outline="#f8fafc", width=2)
+    canvas.create_polygon(
+        cx - 145, cy + 55,
+        cx - 125, cy - 25,
+        cx - 70, cy - 95,
+        cx + 70, cy - 95,
+        cx + 125, cy - 25,
+        cx + 145, cy + 55,
+        cx + 105, cy + 95,
+        cx - 105, cy + 95,
+        fill="#cbd5e1",
+        outline="#f8fafc",
+        width=2
+    )
 
-    canvas.create_polygon(cx - 70, cy - 78, cx + 70, cy - 78,
-                          cx + 90, cy - 5, cx - 90, cy - 5,
-                          fill="#020617", outline="#38bdf8", width=2)
+    canvas.create_polygon(
+        cx - 70, cy - 78,
+        cx + 70, cy - 78,
+        cx + 90, cy - 5,
+        cx - 90, cy - 5,
+        fill="#020617",
+        outline="#38bdf8",
+        width=2
+    )
 
     canvas.create_rectangle(cx - 120, cy + 42, cx + 120, cy + 52,
                             fill="#7f1d1d", outline="")
@@ -273,17 +266,17 @@ def draw_car():
                        fill="#ff1f1f", outline="")
 
 
-def draw_camera(frame):
-    global camera_image
+def draw_sensor_zone(color, status):
+    canvas.create_polygon(
+        620, 520, 780, 520, 740, 170, 660, 170,
+        fill=color,
+        stipple="gray25",
+        outline=color,
+        width=2
+    )
 
-    draw_panel(1030, 80, 1380, 450, "CAMERA OBJECT DETECTION")
-
-    frame = cv2.resize(frame, (320, 240))
-    frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-    image = Image.fromarray(frame)
-    camera_image = ImageTk.PhotoImage(image)
-
-    canvas.create_image(1205, 245, image=camera_image)
+    canvas.create_text(700, 250, text=status + " ZONE",
+                       fill=color, font=("Arial", 20, "bold"))
 
 
 def draw_ui(distance, person_detected, color, status, message, speed):
@@ -302,22 +295,23 @@ def draw_ui(distance, person_detected, color, status, message, speed):
     canvas.create_text(190, 350, text=message, fill=color,
                        font=("Arial", 13), anchor="w")
 
-    draw_panel(1050, 480, 1380, 620, "SYSTEM STATUS")
+    draw_panel(1030, 80, 1380, 380, "CAMERA STATUS")
 
     rows = [
+        ("Detected Object", last_detected_object),
+        ("Person Detected", "YES" if person_detected else "NO"),
         ("Trigger Pin", f"GPIO{TRIGGER_PIN}"),
         ("Echo Pin", f"GPIO{ECHO_PIN}"),
-        ("Person Detected", "YES" if person_detected else "NO"),
-        ("Stop Rule", "Person/Object < 15 cm"),
+        ("Camera Window", "OpenCV")
     ]
 
-    y = 520
+    y = 135
     for name, value in rows:
-        canvas.create_text(1080, y, text=name, fill="#cbd5e1",
+        canvas.create_text(1060, y, text=name, fill="#cbd5e1",
                            font=("Arial", 12), anchor="w")
         canvas.create_text(1350, y, text=value, fill="white",
                            font=("Arial", 12), anchor="e")
-        y += 28
+        y += 38
 
     cards = [
         ("CURRENT STATUS", status, message),
@@ -341,10 +335,6 @@ def draw_ui(distance, person_detected, color, status, message, speed):
         x += 340
 
 
-# =========================
-# MAIN UPDATE LOOP
-# =========================
-
 def update():
     global stop_until, last_distance
 
@@ -357,7 +347,7 @@ def update():
     else:
         distance = last_distance
 
-    frame, person_detected = detect_person()
+    person_detected = detect_objects()
 
     if distance < STOP_DISTANCE and now >= stop_until:
         stop_until = now + 3
@@ -372,23 +362,17 @@ def update():
 
     moving = speed_level != "STOP"
 
-    distance_history.append(distance)
-
     draw_environment(moving, speed_level)
-    draw_sensor_zone(distance, color, status)
+    draw_sensor_zone(color, status)
     draw_car()
-    draw_camera(frame)
     draw_ui(distance, person_detected, color, status, message, speed)
-
-    canvas.create_oval(1220, 25, 1235, 40, fill="#30ff5a", outline="")
-    canvas.create_text(1250, 33, text="SYSTEM ACTIVE",
-                       fill="#bbf7d0", font=("Arial", 14, "bold"), anchor="w")
 
     root.after(200, update)
 
 
 def on_close():
     picam2.stop()
+    cv2.destroyAllWindows()
     root.destroy()
 
 
