@@ -1,6 +1,7 @@
 import tkinter as tk
 import time
 import cv2
+import math
 from gpiozero import DistanceSensor
 from picamera2 import Picamera2
 from ultralytics import YOLO
@@ -35,7 +36,7 @@ def get_distance():
 
 
 # =========================
-# CAMERA + YOLO
+# YOLO CAMERA
 # =========================
 
 model = YOLO("yolov8n.pt")
@@ -75,7 +76,7 @@ time.sleep(2)
 
 
 # =========================
-# GUI
+# GUI SETUP
 # =========================
 
 WIDTH = 1400
@@ -91,7 +92,6 @@ canvas.pack()
 
 road_offset = 0
 side_offset = 0
-
 last_distance = 100
 stop_until = 0
 last_detected_object = "None"
@@ -162,12 +162,11 @@ def detect_objects():
                 )
 
     last_detected_object = ", ".join(sorted(set(detected_names))) if detected_names else "None"
-
     return frame, person_detected
 
 
 def cv2_to_tk(frame):
-    frame = cv2.resize(frame, (210, 150))
+    frame = cv2.resize(frame, (220, 160))
     success, encoded = cv2.imencode(".ppm", frame)
 
     if not success:
@@ -180,10 +179,10 @@ def cv2_to_tk(frame):
 # DRAWING HELPERS
 # =========================
 
-def draw_panel(x1, y1, x2, y2, title="", outline="#164e63"):
+def draw_panel(x1, y1, x2, y2, title="", outline="#164e63", fill="#06111f"):
     canvas.create_rectangle(
         x1, y1, x2, y2,
-        fill="#06111f",
+        fill=fill,
         outline=outline,
         width=2
     )
@@ -200,21 +199,10 @@ def draw_panel(x1, y1, x2, y2, title="", outline="#164e63"):
 
 
 def draw_header():
-    canvas.create_rectangle(0, 0, WIDTH, 82, fill="#050910", outline="#0f172a")
+    canvas.create_rectangle(0, 0, WIDTH, 85, fill="#050910", outline="#0f172a")
 
-    canvas.create_text(
-        75, 42,
-        text="18:40",
-        fill="white",
-        font=("Arial", 20, "bold")
-    )
-
-    canvas.create_text(
-        150, 42,
-        text="Melbourne · 24°C",
-        fill="#94a3b8",
-        font=("Arial", 12)
-    )
+    canvas.create_text(70, 42, text="18:40", fill="white", font=("Arial", 20, "bold"))
+    canvas.create_text(155, 42, text="Melbourne · 24°C", fill="#94a3b8", font=("Arial", 12))
 
     canvas.create_text(
         WIDTH // 2,
@@ -224,11 +212,11 @@ def draw_header():
         font=("Arial", 24, "bold")
     )
 
-    canvas.create_line(320, 42, 420, 42, fill="#38bdf8", width=2)
-    canvas.create_line(420, 42, 440, 58, fill="#38bdf8", width=2)
+    canvas.create_line(330, 42, 430, 42, fill="#38bdf8", width=2)
+    canvas.create_line(430, 42, 450, 58, fill="#38bdf8", width=2)
 
-    canvas.create_line(980, 58, 1000, 42, fill="#38bdf8", width=2)
-    canvas.create_line(1000, 42, 1100, 42, fill="#38bdf8", width=2)
+    canvas.create_line(950, 58, 970, 42, fill="#38bdf8", width=2)
+    canvas.create_line(970, 42, 1070, 42, fill="#38bdf8", width=2)
 
     canvas.create_oval(1210, 33, 1225, 48, fill="#22c55e", outline="")
     canvas.create_text(
@@ -242,23 +230,17 @@ def draw_header():
 
 
 def draw_vertical_gauge(cx, cy, rx, ry, value, max_value, title, unit, color, subtitle):
-    canvas.create_oval(
-        cx - rx, cy - ry,
-        cx + rx, cy + ry,
-        outline="#123456",
-        width=3
-    )
+    canvas.create_oval(cx - rx, cy - ry, cx + rx, cy + ry, outline="#123456", width=3)
+    canvas.create_oval(cx - rx + 10, cy - ry + 10, cx + rx - 10, cy + ry - 10,
+                       outline="#1e293b", width=10)
 
-    canvas.create_oval(
-        cx - rx + 10, cy - ry + 10,
-        cx + rx - 10, cy + ry - 10,
-        outline="#1e293b",
-        width=10
-    )
+    percentage = max(0, min(value / max_value, 1))
 
     canvas.create_arc(
-        cx - rx + 36, cy - ry + 95,
-        cx + rx - 36, cy + ry - 95,
+        cx - rx + 35,
+        cy - ry + 95,
+        cx + rx - 35,
+        cy + ry - 95,
         start=145,
         extent=-260,
         outline="#334155",
@@ -266,10 +248,11 @@ def draw_vertical_gauge(cx, cy, rx, ry, value, max_value, title, unit, color, su
         style="arc"
     )
 
-    percentage = max(0, min(value / max_value, 1))
     canvas.create_arc(
-        cx - rx + 36, cy - ry + 95,
-        cx + rx - 36, cy + ry - 95,
+        cx - rx + 35,
+        cy - ry + 95,
+        cx + rx - 35,
+        cy + ry - 95,
         start=145,
         extent=-260 * percentage,
         outline=color,
@@ -277,95 +260,57 @@ def draw_vertical_gauge(cx, cy, rx, ry, value, max_value, title, unit, color, su
         style="arc"
     )
 
-    for i in range(0, 11):
-        angle = 145 - (260 * i / 10)
-        rad = angle * 3.14159 / 180
-
-        x1 = cx + (rx - 70) * tk._default_root.tk.getdouble(__import__("math").cos(rad))
-        y1 = cy - 20 - (ry - 130) * tk._default_root.tk.getdouble(__import__("math").sin(rad))
-
-        x2 = cx + (rx - 55) * tk._default_root.tk.getdouble(__import__("math").cos(rad))
-        y2 = cy - 20 - (ry - 115) * tk._default_root.tk.getdouble(__import__("math").sin(rad))
-
+    for i in range(11):
+        angle = math.radians(145 - (260 * i / 10))
+        x1 = cx + (rx - 70) * math.cos(angle)
+        y1 = cy - 20 - (ry - 130) * math.sin(angle)
+        x2 = cx + (rx - 55) * math.cos(angle)
+        y2 = cy - 20 - (ry - 115) * math.sin(angle)
         canvas.create_line(x1, y1, x2, y2, fill="#64748b", width=1)
 
-    canvas.create_text(
-        cx,
-        cy - 15,
-        text=str(value),
-        fill="white",
-        font=("Arial", 54, "bold")
-    )
+    canvas.create_text(cx, cy - 15, text=str(value), fill="white", font=("Arial", 54, "bold"))
+    canvas.create_text(cx, cy + 55, text=unit, fill="#cbd5e1", font=("Arial", 17))
 
-    canvas.create_text(
-        cx,
-        cy + 55,
-        text=unit,
-        fill="#cbd5e1",
-        font=("Arial", 17)
-    )
+    canvas.create_rectangle(cx - 44, cy + 92, cx + 44, cy + 122,
+                            outline=color, fill="#0a1724", width=1)
+    canvas.create_text(cx, cy + 107, text=subtitle, fill=color, font=("Arial", 13, "bold"))
 
-    canvas.create_rectangle(
-        cx - 42,
-        cy + 92,
-        cx + 42,
-        cy + 122,
-        outline=color,
-        fill="#0a1724",
-        width=1
-    )
-
-    canvas.create_text(
-        cx,
-        cy + 107,
-        text=subtitle,
-        fill=color,
-        font=("Arial", 13, "bold")
-    )
-
-    canvas.create_line(cx - 75, cy + 170, cx + 75, cy + 170, fill="#1e293b")
-
-    canvas.create_text(
-        cx,
-        cy + 205,
-        text=title,
-        fill="#38bdf8" if title == "DRIVE MODE" else "#cbd5e1",
-        font=("Arial", 12, "bold")
-    )
+    canvas.create_text(cx, cy + 170, text=title, fill="#38bdf8",
+                       font=("Arial", 13, "bold"))
 
 
 def draw_tree(x, y, scale):
     canvas.create_rectangle(
-        x - 8 * scale,
+        x - 7 * scale,
         y,
-        x + 8 * scale,
-        y + 70 * scale,
+        x + 7 * scale,
+        y + 55 * scale,
         fill="#4b2e16",
         outline=""
     )
 
     canvas.create_oval(
-        x - 42 * scale,
-        y - 40 * scale,
-        x + 42 * scale,
-        y + 40 * scale,
+        x - 33 * scale,
+        y - 32 * scale,
+        x + 33 * scale,
+        y + 32 * scale,
         fill="#0f5132",
         outline=""
     )
 
     canvas.create_oval(
-        x - 30 * scale,
-        y - 75 * scale,
-        x + 30 * scale,
-        y - 15 * scale,
+        x - 24 * scale,
+        y - 58 * scale,
+        x + 24 * scale,
+        y - 10 * scale,
         fill="#166534",
         outline=""
     )
 
 
 def draw_house(x, y, scale):
-    w = 75 * scale
-    h = 55 * scale
+    w = 60 * scale
+    h = 45 * scale
 
     canvas.create_rectangle(
         x - w / 2,
@@ -377,21 +322,21 @@ def draw_house(x, y, scale):
     )
 
     canvas.create_polygon(
-        x - w / 2 - 8 * scale,
+        x - w / 2 - 6 * scale,
         y - h,
         x,
-        y - h - 35 * scale,
-        x + w / 2 + 8 * scale,
+        y - h - 28 * scale,
+        x + w / 2 + 6 * scale,
         y - h,
         fill="#7f1d1d",
         outline=""
     )
 
     canvas.create_rectangle(
-        x - 25 * scale,
-        y - 40 * scale,
-        x - 8 * scale,
-        y - 25 * scale,
+        x - 18 * scale,
+        y - 32 * scale,
+        x - 5 * scale,
+        y - 20 * scale,
         fill="#fde68a",
         outline=""
     )
@@ -400,130 +345,90 @@ def draw_house(x, y, scale):
 def draw_navigation_view(moving, speed_level, color, status):
     global road_offset, side_offset
 
-    draw_panel(300, 105, 1095, 735, "AUTONOMOUS NAVIGATION")
+    # Main centre panel
+    draw_panel(320, 115, 1080, 705, "AUTONOMOUS NAVIGATION")
 
-    canvas.create_rectangle(315, 145, 1080, 720, fill="#061827", outline="")
-    canvas.create_rectangle(315, 145, 1080, 235, fill="#07111d", outline="")
+    canvas.create_rectangle(340, 155, 1060, 685, fill="#061827", outline="")
+    canvas.create_rectangle(340, 155, 1060, 240, fill="#07111d", outline="")
 
     # Stars
-    for x, y in [(360, 165), (500, 175), (650, 160), (780, 185), (980, 170), (880, 155)]:
+    for x, y in [(380, 175), (520, 185), (640, 168), (810, 178), (970, 170), (880, 160)]:
         canvas.create_oval(x, y, x + 2, y + 2, fill="#64748b", outline="")
 
     # Mountains
-    canvas.create_polygon(
-        315, 235, 390, 200, 460, 230, 520, 205, 620, 235,
-        fill="#0f172a", outline=""
-    )
-    canvas.create_polygon(
-        820, 235, 930, 205, 1010, 225, 1080, 195, 1080, 235,
-        fill="#0f172a", outline=""
-    )
+    canvas.create_polygon(340, 240, 410, 205, 480, 235, 540, 210, 640, 240,
+                          fill="#0f172a", outline="")
+    canvas.create_polygon(830, 240, 930, 210, 1010, 230, 1060, 205, 1060, 240,
+                          fill="#0f172a", outline="")
 
-    # Grid ground
-    for i in range(22):
-        y = 235 + i * 22
-        canvas.create_line(315, y, 1080, y, fill="#073047", width=1)
+    # Ground grid
+    for i in range(20):
+        y = 240 + i * 22
+        canvas.create_line(340, y, 1060, y, fill="#073047", width=1)
 
-    for i in range(18):
-        x = 315 + i * 45
-        canvas.create_line(x, 235, 700, 720, fill="#073047", width=1)
+    for i in range(16):
+        x = 340 + i * 50
+        canvas.create_line(x, 240, 700, 685, fill="#073047", width=1)
 
     # Road
     canvas.create_polygon(
-        625, 235,
-        775, 235,
-        1080, 720,
-        315, 720,
+        630, 240,
+        770, 240,
+        1060, 685,
+        340, 685,
         fill="#102132",
         outline="#38bdf8",
         width=2
     )
 
-    canvas.create_line(625, 235, 315, 720, fill="#93c5fd", width=3)
-    canvas.create_line(775, 235, 1080, 720, fill="#93c5fd", width=3)
+    canvas.create_line(630, 240, 340, 685, fill="#93c5fd", width=3)
+    canvas.create_line(770, 240, 1060, 685, fill="#93c5fd", width=3)
 
-    # Moving road grid
+    # Moving road lines
     for i in range(18):
-        y = 250 + ((i * 45 + road_offset) % 460)
-        scale = (y - 235) / 485
-
-        left = 625 - 310 * scale
-        right = 775 + 305 * scale
-
+        y = 255 + ((i * 45 + road_offset) % 420)
+        scale = (y - 240) / 445
+        left = 630 - 290 * scale
+        right = 770 + 290 * scale
         canvas.create_line(left, y, right, y, fill="#164e63", width=1)
 
-    # Centre dashed line
+    # Centre lane
     for i in range(12):
-        y = 250 + ((i * 65 + road_offset) % 450)
-        scale = (y - 235) / 485
+        y = 255 + ((i * 65 + road_offset) % 410)
+        scale = (y - 240) / 445
+        canvas.create_line(700, y, 700, y + 35 * scale,
+                           fill="#e0f2fe", width=max(2, int(4 * scale)))
 
-        canvas.create_line(
-            700,
-            y,
-            700,
-            y + 35 * scale,
-            fill="#e0f2fe",
-            width=max(2, int(4 * scale))
-        )
+    # Smaller side trees/houses - kept away from bottom text
+    for i in range(7):
+        y = 265 + ((i * 85 + side_offset) % 360)
+        scale = max(0.18, (y - 230) / 430)
 
-    # Houses and trees
-    for i in range(9):
-        y = 250 + ((i * 90 + side_offset) % 470)
-        scale = max(0.22, (y - 210) / 430)
+        left_x = 605 - 260 * scale
+        right_x = 795 + 260 * scale
 
-        left_x = 590 - 340 * scale
-        right_x = 810 + 340 * scale
+        if y < 620:
+            draw_tree(left_x, y, scale)
+            draw_tree(right_x, y, scale)
 
-        draw_tree(left_x, y, scale)
-        draw_tree(right_x, y, scale)
+        if i % 3 == 0 and y < 600:
+            draw_house(left_x - 55 * scale, y + 20 * scale, scale)
+            draw_house(right_x + 55 * scale, y + 20 * scale, scale)
 
-        if i % 3 == 0:
-            draw_house(left_x - 70 * scale, y + 25 * scale, scale)
-            draw_house(right_x + 70 * scale, y + 25 * scale, scale)
+    # Sensor zone
+    canvas.create_polygon(620, 550, 780, 550, 745, 300, 655, 300,
+                          fill="#22c55e", stipple="gray50", outline="#22c55e", width=1)
 
-    # Sensor zones
-    canvas.create_polygon(
-        620, 560,
-        780, 560,
-        745, 300,
-        655, 300,
-        fill="#22c55e",
-        stipple="gray50",
-        outline="#22c55e",
-        width=1
-    )
+    canvas.create_polygon(640, 405, 760, 405, 735, 285, 665, 285,
+                          fill="#f59e0b", stipple="gray50", outline="#f59e0b", width=1)
 
-    canvas.create_polygon(
-        640, 400,
-        760, 400,
-        735, 285,
-        665, 285,
-        fill="#f59e0b",
-        stipple="gray50",
-        outline="#f59e0b",
-        width=1
-    )
+    canvas.create_polygon(660, 335, 740, 335, 725, 255, 675, 255,
+                          fill="#ef4444", stipple="gray50", outline="#ef4444", width=1)
 
-    canvas.create_polygon(
-        660, 335,
-        740, 335,
-        725, 255,
-        675, 255,
-        fill="#ef4444",
-        stipple="gray50",
-        outline="#ef4444",
-        width=1
-    )
+    canvas.create_text(700, 355, text=status + " ZONE",
+                       fill=color, font=("Arial", 18, "bold"))
 
-    canvas.create_text(
-        700,
-        350,
-        text=status + " ZONE",
-        fill=color,
-        font=("Arial", 18, "bold")
-    )
-
-    draw_car(700, 600)
+    draw_car(700, 590)
 
     if moving:
         if speed_level == "FAST":
@@ -535,79 +440,93 @@ def draw_navigation_view(moving, speed_level, color, status):
 
 
 def draw_car(cx, cy):
-    canvas.create_oval(cx - 180, cy + 70, cx + 180, cy + 120, fill="#020617", outline="")
+    canvas.create_oval(cx - 175, cy + 65, cx + 175, cy + 112, fill="#020617", outline="")
 
     canvas.create_polygon(
-        cx - 155, cy + 45,
-        cx - 130, cy - 55,
-        cx - 75, cy - 120,
-        cx + 75, cy - 120,
-        cx + 130, cy - 55,
-        cx + 155, cy + 45,
-        cx + 115, cy + 90,
-        cx - 115, cy + 90,
+        cx - 145, cy + 40,
+        cx - 120, cy - 55,
+        cx - 70, cy - 115,
+        cx + 70, cy - 115,
+        cx + 120, cy - 55,
+        cx + 145, cy + 40,
+        cx + 110, cy + 85,
+        cx - 110, cy + 85,
         fill="#e5e7eb",
         outline="#f8fafc",
         width=2
     )
 
     canvas.create_polygon(
-        cx - 75, cy - 100,
-        cx + 75, cy - 100,
-        cx + 100, cy - 15,
-        cx - 100, cy - 15,
+        cx - 70, cy - 95,
+        cx + 70, cy - 95,
+        cx + 95, cy - 15,
+        cx - 95, cy - 15,
         fill="#020617",
         outline="#38bdf8",
         width=2
     )
 
     canvas.create_polygon(
-        cx - 115, cy + 0,
-        cx + 115, cy + 0,
-        cx + 90, cy + 52,
-        cx - 90, cy + 52,
+        cx - 110, cy + 0,
+        cx + 110, cy + 0,
+        cx + 85, cy + 48,
+        cx - 85, cy + 48,
         fill="#111827",
         outline="#334155",
         width=2
     )
 
-    canvas.create_rectangle(cx - 135, cy + 50, cx + 135, cy + 60, fill="#7f1d1d", outline="")
-    canvas.create_rectangle(cx - 140, cy + 45, cx - 65, cy + 60, fill="#ef4444", outline="")
-    canvas.create_rectangle(cx + 65, cy + 45, cx + 140, cy + 60, fill="#ef4444", outline="")
+    canvas.create_rectangle(cx - 130, cy + 46, cx + 130, cy + 57,
+                            fill="#7f1d1d", outline="")
+    canvas.create_rectangle(cx - 135, cy + 42, cx - 65, cy + 58,
+                            fill="#ef4444", outline="")
+    canvas.create_rectangle(cx + 65, cy + 42, cx + 135, cy + 58,
+                            fill="#ef4444", outline="")
 
 
 def draw_camera_feed(frame):
     global camera_img
 
-    draw_panel(915, 120, 1080, 285, "YOLO CAMERA")
+    # Camera panel with bright color border
+    canvas.create_rectangle(875, 130, 1070, 325, fill="#020711", outline="#38bdf8", width=3)
+    canvas.create_rectangle(881, 136, 1064, 319, fill="#06111f", outline="#f472b6", width=2)
 
-    canvas.create_text(1055, 145, text="● LIVE", fill="#ef4444",
+    canvas.create_text(895, 154, text="YOLO CAMERA", fill="#38bdf8",
+                       font=("Arial", 10, "bold"), anchor="w")
+    canvas.create_text(1055, 154, text="● LIVE", fill="#ef4444",
                        font=("Arial", 10, "bold"), anchor="e")
 
     camera_img = cv2_to_tk(frame)
 
     if camera_img:
-        canvas.create_image(997, 215, image=camera_img)
+        canvas.create_image(972, 235, image=camera_img)
 
 
 def draw_bottom_status(status, color, message):
-    canvas.create_rectangle(320, 665, 1080, 730, fill="#06111f", outline="#164e63", width=2)
+    # Put this on top layer after all trees/car
+    canvas.create_rectangle(360, 640, 1040, 700, fill="#020711", outline="#38bdf8", width=2)
 
-    canvas.create_text(375, 700, text="◎", fill="#86efac", font=("Arial", 34, "bold"))
-    canvas.create_text(420, 690, text="DETECTED OBJECT", fill="#cbd5e1", font=("Arial", 11, "bold"), anchor="w")
-    canvas.create_text(420, 715, text=last_detected_object, fill="#86efac", font=("Arial", 15, "bold"), anchor="w")
+    canvas.create_text(400, 670, text="◎", fill="#86efac", font=("Arial", 28, "bold"))
+    canvas.create_text(445, 660, text="DETECTED OBJECT", fill="#cbd5e1",
+                       font=("Arial", 10, "bold"), anchor="w")
+    canvas.create_text(445, 684, text=last_detected_object, fill="#86efac",
+                       font=("Arial", 13, "bold"), anchor="w")
 
-    canvas.create_line(575, 675, 575, 720, fill="#1e293b")
+    canvas.create_line(585, 650, 585, 690, fill="#1e293b")
 
-    canvas.create_text(630, 700, text="⬟", fill="#f59e0b", font=("Arial", 30, "bold"))
-    canvas.create_text(675, 690, text="DECISION", fill="#cbd5e1", font=("Arial", 11, "bold"), anchor="w")
-    canvas.create_text(675, 715, text=status, fill=color, font=("Arial", 15, "bold"), anchor="w")
+    canvas.create_text(630, 670, text="⬟", fill="#f59e0b", font=("Arial", 26, "bold"))
+    canvas.create_text(675, 660, text="DECISION", fill="#cbd5e1",
+                       font=("Arial", 10, "bold"), anchor="w")
+    canvas.create_text(675, 684, text=status, fill=color,
+                       font=("Arial", 13, "bold"), anchor="w")
 
-    canvas.create_line(800, 675, 800, 720, fill="#1e293b")
+    canvas.create_line(805, 650, 805, 690, fill="#1e293b")
 
-    canvas.create_text(850, 700, text="⌘", fill="#38bdf8", font=("Arial", 30, "bold"))
-    canvas.create_text(895, 690, text="STATUS", fill="#cbd5e1", font=("Arial", 11, "bold"), anchor="w")
-    canvas.create_text(895, 715, text=message, fill="#38bdf8", font=("Arial", 15, "bold"), anchor="w")
+    canvas.create_text(850, 670, text="⌘", fill="#38bdf8", font=("Arial", 26, "bold"))
+    canvas.create_text(895, 660, text="STATUS", fill="#cbd5e1",
+                       font=("Arial", 10, "bold"), anchor="w")
+    canvas.create_text(895, 684, text=message, fill="#38bdf8",
+                       font=("Arial", 13, "bold"), anchor="w")
 
 
 def draw_dashboard(frame, distance, person_detected, status, color, message, speed, speed_level):
@@ -618,16 +537,16 @@ def draw_dashboard(frame, distance, person_detected, status, color, message, spe
     moving = speed_level != "STOP"
 
     # Left speed panel
-    canvas.create_rectangle(20, 120, 285, 735, fill="#06111f", outline="#164e63", width=2)
-    canvas.create_text(145, 170, text="SPEED", fill="#e5e7eb", font=("Arial", 14, "bold"))
+    canvas.create_rectangle(35, 125, 295, 725, fill="#06111f", outline="#164e63", width=2)
+    canvas.create_text(165, 175, text="SPEED", fill="#e5e7eb", font=("Arial", 14, "bold"))
 
     speed_label = "FAST" if speed == 60 else "SLOW" if speed == 25 else "STOP"
 
     draw_vertical_gauge(
-        cx=145,
+        cx=165,
         cy=390,
-        rx=105,
-        ry=190,
+        rx=95,
+        ry=175,
         value=speed,
         max_value=100,
         title="DRIVE MODE",
@@ -636,44 +555,42 @@ def draw_dashboard(frame, distance, person_detected, status, color, message, spe
         subtitle=speed_label
     )
 
-    canvas.create_text(90, 610, text="P", fill="#64748b", font=("Arial", 12, "bold"))
-    canvas.create_text(130, 610, text="R", fill="#64748b", font=("Arial", 12, "bold"))
-    canvas.create_text(170, 610, text="N", fill="#64748b", font=("Arial", 12, "bold"))
-    canvas.create_text(210, 610, text="D", fill="#22c55e", font=("Arial", 13, "bold"))
-    canvas.create_text(145, 690, text="AUTONOMOUS", fill="#38bdf8", font=("Arial", 13, "bold"))
+    canvas.create_text(165, 675, text="AUTONOMOUS", fill="#38bdf8",
+                       font=("Arial", 13, "bold"))
 
-    # Centre navigation
+    # Centre
     draw_navigation_view(moving, speed_level, color, status)
 
-    # Camera in corner
+    # Camera with colored frame
     draw_camera_feed(frame)
 
-    # Bottom centre status
+    # Bottom readable status
     draw_bottom_status(status, color, message)
 
     # Right distance panel
-    canvas.create_rectangle(1115, 120, 1380, 735, fill="#06111f", outline="#164e63", width=2)
-    canvas.create_text(1247, 170, text="DISTANCE", fill="#e5e7eb", font=("Arial", 14, "bold"))
+    canvas.create_rectangle(1105, 125, 1365, 725, fill="#06111f", outline="#164e63", width=2)
+    canvas.create_text(1235, 175, text="DISTANCE", fill="#e5e7eb", font=("Arial", 14, "bold"))
 
     display_distance = 0 if distance is None else int(distance)
     distance_label = "SAFE" if display_distance >= SLOW_DISTANCE else "SLOW" if display_distance >= STOP_DISTANCE else "STOP"
 
     draw_vertical_gauge(
-        cx=1247,
+        cx=1235,
         cy=390,
-        rx=105,
-        ry=190,
+        rx=95,
+        ry=175,
         value=min(display_distance, 400),
         max_value=400,
-        title="ULTRASONIC\nSENSOR",
+        title="ULTRASONIC",
         unit="cm",
         color=color,
         subtitle=distance_label
     )
 
-    canvas.create_text(1247, 625, text=")))", fill="#86efac", font=("Arial", 22, "bold"))
-    canvas.create_text(1247, 665, text="ULTRASONIC", fill="#cbd5e1", font=("Arial", 12, "bold"))
-    canvas.create_text(1247, 690, text="SENSOR", fill="#cbd5e1", font=("Arial", 12, "bold"))
+    canvas.create_text(1235, 650, text="ULTRASONIC SENSOR",
+                       fill="#cbd5e1", font=("Arial", 12, "bold"))
+    canvas.create_text(1235, 680, text=f"{display_distance} cm",
+                       fill=color, font=("Arial", 18, "bold"))
 
 
 def update():
