@@ -1,24 +1,48 @@
 import tkinter as tk
 import time
+from time import sleep
 from gpiozero import DistanceSensor
 
-# GPIOZERO USES BCM GPIO NUMBER
-# trigger=23 means GPIO23
-# echo=24 means GPIO24
-sensor = DistanceSensor(
-    echo=24,
-    trigger=23,
-    max_distance=2.0
-)
+# =========================
+# ULTRASONIC SENSOR SETUP
+# =========================
 
-WIDTH = 1400
-HEIGHT = 800
+TRIGGER_PIN = 23
+ECHO_PIN = 24
+
+MAX_RANGE_CM = 400
+SAMPLE_SIZE = 5
 
 STOP_DISTANCE = 15
 SLOW_DISTANCE = 40
 
+sensor = DistanceSensor(
+    echo=ECHO_PIN,
+    trigger=TRIGGER_PIN,
+    max_distance=MAX_RANGE_CM / 100,
+    queue_len=SAMPLE_SIZE,
+    partial=True
+)
+
+def get_distance():
+    try:
+        d = sensor.distance
+        if d is None:
+            return None
+        return round(d * 100, 1)
+    except Exception:
+        return None
+
+
+# =========================
+# GUI SETUP
+# =========================
+
+WIDTH = 1400
+HEIGHT = 800
+
 root = tk.Tk()
-root.title("Professional Ultrasonic Sensor Dashboard")
+root.title("Ultrasonic Sensor Autonomous Car Dashboard")
 root.geometry(f"{WIDTH}x{HEIGHT}")
 root.configure(bg="#06111c")
 
@@ -33,84 +57,25 @@ stop_until = 0
 last_distance = 100
 
 
-def get_status(distance):
+def get_status(distance, forced_stop=False):
+    if distance is None:
+        return "#94a3b8", "ERROR", "Sensor error", "0 km/h"
+
+    if forced_stop:
+        return "#ff3b30", "STOP", "Waiting 3 seconds", "0 km/h"
+
     if distance < STOP_DISTANCE:
         return "#ff3b30", "STOP", "Object detected", "0 km/h"
     elif distance < SLOW_DISTANCE:
-        return "#ffd60a", "SLOW", "Object ahead", "25 km/h"
+        return "#ffd60a", "SLOW", "Object nearby", "25 km/h"
     else:
-        return "#30ff5a", "CLEAR", "Path is safe", "60 km/h"
+        return "#30ff5a", "FAST", "Path clear", "60 km/h"
 
 
 def draw_panel(x1, y1, x2, y2, title):
     canvas.create_rectangle(x1, y1, x2, y2, fill="#071521", outline="#1e3a4f", width=2)
     canvas.create_text(x1 + 20, y1 + 25, text=title, fill="white",
                        font=("Arial", 13, "bold"), anchor="w")
-
-
-def read_ultrasonic_distance():
-    try:
-        distance = sensor.distance * 100
-        return round(distance, 1)
-    except:
-        return last_distance
-
-
-def draw_environment(moving, speed_level):
-    global road_offset, side_offset
-
-    canvas.create_rectangle(0, 0, WIDTH, HEIGHT, fill="#06111c", outline="")
-
-    canvas.create_text(WIDTH // 2, 35, text="ULTRASONIC SENSOR CONTROL",
-                       fill="white", font=("Arial", 24, "bold"))
-
-    canvas.create_oval(360, 80, 1040, 520, fill="#0e2233", outline="")
-
-    # Road
-    canvas.create_polygon(
-        570, 130, 830, 130, 1120, 700, 280, 700,
-        fill="#132433", outline="#dbeafe", width=3
-    )
-
-    # Road grid
-    for i in range(18):
-        y = 150 + ((i * 45 + road_offset) % 560)
-        scale = (y - 130) / 570
-        left = 570 - 290 * scale
-        right = 830 + 290 * scale
-        canvas.create_line(left, y, right, y, fill="#1e4056", width=1)
-
-    # Lane marks
-    for i in range(10):
-        y = 160 + ((i * 75 + road_offset) % 540)
-        scale = (y - 130) / 570
-        canvas.create_line(700, y, 700, y + 38 * scale,
-                           fill="white", width=max(2, int(5 * scale)))
-
-    # Trees / lights / houses
-    for i in range(10):
-        y = 130 + ((i * 95 + side_offset) % 620)
-        scale = max(0.25, (y - 100) / 520)
-
-        left_x = 520 - 360 * scale
-        right_x = 880 + 360 * scale
-
-        draw_tree(left_x, y, scale)
-        draw_tree(right_x, y, scale)
-        draw_light(left_x + 80 * scale, y, scale)
-        draw_light(right_x - 80 * scale, y, scale)
-
-        if i % 3 == 0:
-            draw_house(left_x - 100 * scale, y + 30 * scale, scale)
-            draw_house(right_x + 100 * scale, y + 30 * scale, scale)
-
-    if moving:
-        if speed_level == "FAST":
-            road_offset += 20
-            side_offset += 28
-        elif speed_level == "SLOW":
-            road_offset += 7
-            side_offset += 10
 
 
 def draw_tree(x, y, scale):
@@ -149,19 +114,65 @@ def draw_house(x, y, scale):
                             fill="#fde68a", outline="")
 
 
-def draw_sensor_zone(distance):
-    color, status, message, speed = get_status(distance)
+def draw_environment(moving, speed_level):
+    global road_offset, side_offset
+
+    canvas.create_rectangle(0, 0, WIDTH, HEIGHT, fill="#06111c", outline="")
+    canvas.create_text(WIDTH // 2, 35, text="ULTRASONIC SENSOR CONTROL",
+                       fill="white", font=("Arial", 24, "bold"))
+
+    canvas.create_oval(360, 80, 1040, 520, fill="#0e2233", outline="")
+
+    canvas.create_polygon(
+        570, 130, 830, 130, 1120, 700, 280, 700,
+        fill="#132433", outline="#dbeafe", width=3
+    )
+
+    for i in range(18):
+        y = 150 + ((i * 45 + road_offset) % 560)
+        scale = (y - 130) / 570
+        left = 570 - 290 * scale
+        right = 830 + 290 * scale
+        canvas.create_line(left, y, right, y, fill="#1e4056", width=1)
+
+    for i in range(10):
+        y = 160 + ((i * 75 + road_offset) % 540)
+        scale = (y - 130) / 570
+        canvas.create_line(700, y, 700, y + 38 * scale,
+                           fill="white", width=max(2, int(5 * scale)))
+
+    for i in range(10):
+        y = 130 + ((i * 95 + side_offset) % 620)
+        scale = max(0.25, (y - 100) / 520)
+
+        left_x = 520 - 360 * scale
+        right_x = 880 + 360 * scale
+
+        draw_tree(left_x, y, scale)
+        draw_tree(right_x, y, scale)
+        draw_light(left_x + 80 * scale, y, scale)
+        draw_light(right_x - 80 * scale, y, scale)
+
+        if i % 3 == 0:
+            draw_house(left_x - 100 * scale, y + 30 * scale, scale)
+            draw_house(right_x + 100 * scale, y + 30 * scale, scale)
+
+    if moving:
+        if speed_level == "FAST":
+            road_offset += 20
+            side_offset += 28
+        elif speed_level == "SLOW":
+            road_offset += 7
+            side_offset += 10
+
+
+def draw_sensor_zone(distance, forced_stop):
+    color, status, message, speed = get_status(distance, forced_stop)
 
     canvas.create_polygon(
         620, 520, 780, 520, 740, 170, 660, 170,
         fill=color, stipple="gray25", outline=color, width=2
     )
-
-    for i in range(6):
-        y = 220 + i * 55
-        width = 70 + i * 30
-        canvas.create_arc(700 - width, y - 20, 700 + width, y + 40,
-                          start=0, extent=180, outline=color, width=2)
 
     canvas.create_text(700, 250, text=status + " ZONE",
                        fill=color, font=("Arial", 20, "bold"))
@@ -192,12 +203,14 @@ def draw_car():
                        fill="#ff1f1f", outline="")
 
 
-def draw_ui(distance):
-    color, status, message, speed = get_status(distance)
+def draw_ui(distance, forced_stop):
+    color, status, message, speed = get_status(distance, forced_stop)
+
+    display_distance = "--" if distance is None else f"{distance:.1f}"
 
     draw_panel(30, 80, 390, 380, "ULTRASONIC SENSOR")
 
-    canvas.create_text(260, 210, text=f"{distance:.1f}", fill="white",
+    canvas.create_text(260, 210, text=display_distance, fill="white",
                        font=("Arial", 48, "bold"))
     canvas.create_text(345, 218, text="cm", fill="white", font=("Arial", 16))
 
@@ -225,11 +238,11 @@ def draw_ui(distance):
     draw_panel(1050, 400, 1380, 620, "SENSOR STATUS")
 
     rows = [
-        ("Sensor", "Ultrasonic"),
-        ("Trigger Pin", "GPIO23"),
-        ("Echo Pin", "GPIO24"),
+        ("Trigger", f"GPIO{TRIGGER_PIN}"),
+        ("Echo", f"GPIO{ECHO_PIN}"),
         ("Stop", "< 15 cm"),
-        ("Slow", "15 - 40 cm")
+        ("Slow", "15 - 40 cm"),
+        ("Fast", "> 40 cm")
     ]
 
     y = 450
@@ -240,34 +253,19 @@ def draw_ui(distance):
                            font=("Arial", 12), anchor="e")
         y += 35
 
-    cards = [
-        ("CURRENT STATUS", status, message),
-        ("DISTANCE", f"{distance:.1f} cm", "Measured Distance"),
-        ("SPEED", speed, "Current Speed"),
-        ("MODE", "AUTONOMOUS", "Driving Mode")
-    ]
-
-    x = 30
-    for title, main, sub in cards:
-        canvas.create_rectangle(x, 650, x + 320, 780,
-                                fill="#071521", outline="#1e3a4f", width=2)
-        canvas.create_text(x + 20, 675, text=title, fill="white",
-                           font=("Arial", 11), anchor="w")
-        canvas.create_text(x + 20, 720, text=main, fill=color,
-                           font=("Arial", 25, "bold"), anchor="w")
-        canvas.create_text(x + 20, 755, text=sub, fill="#cbd5e1",
-                           font=("Arial", 12), anchor="w")
-        x += 340
-
 
 def update():
     global stop_until, last_distance
 
     now = time.time()
-    distance = read_ultrasonic_distance()
-    last_distance = distance
+    distance = get_distance()
 
-    if distance < STOP_DISTANCE:
+    if distance is not None:
+        last_distance = distance
+    else:
+        distance = last_distance
+
+    if distance < STOP_DISTANCE and now >= stop_until:
         stop_until = now + 3
 
     forced_stop = now < stop_until
@@ -285,9 +283,9 @@ def update():
     distance_history.append(distance)
 
     draw_environment(moving, speed_level)
-    draw_sensor_zone(distance)
+    draw_sensor_zone(distance, forced_stop)
     draw_car()
-    draw_ui(distance)
+    draw_ui(distance, forced_stop)
 
     canvas.create_oval(1220, 25, 1235, 40, fill="#30ff5a", outline="")
     canvas.create_text(1250, 33, text="SYSTEM ACTIVE",
